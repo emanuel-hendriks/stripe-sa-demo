@@ -1,0 +1,54 @@
+name: Stripe Demo Flow
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    env:
+      STRIPE_DEMO_KEY: ${{ secrets.STRIPE_TEST_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create Restaurant account
+        run: bash task-1-stripe-connect/demo/0-Onboarding/01-create-restaurant.sh
+
+      - name: Create Courier account
+        run: bash task-1-stripe-connect/demo/0-Onboarding/02-create-courier.sh
+
+      - name: Fulfill Restaurant KYC
+        run: bash task-1-stripe-connect/demo/0-Onboarding/03-restaurant-fulfill-kyc.sh
+
+      - name: Fulfill Courier KYC
+        run: bash task-1-stripe-connect/demo/0-Onboarding/04-courier-fulfill-kyc.sh
+
+      - name: Create PaymentIntent
+        run: bash task-1-stripe-connect/demo/1-Collect-Payment/01-create-payment-intent.sh
+
+      - name: Confirm PaymentIntent
+        run: bash task-1-stripe-connect/demo/1-Collect-Payment/02-confirm-payment-intent.sh
+
+      - name: Transfer to Restaurant
+        run: bash task-1-stripe-connect/demo/2-Route-Funds/01-transfer-restaurant.sh
+
+      - name: Transfer to Courier
+        run: bash task-1-stripe-connect/demo/2-Route-Funds/02-transfer-courier.sh
+
+      - name: Verify Accounts
+        run: bash task-1-stripe-connect/demo/3-test/01-verify-accounts/01-verify-accounts.sh
+
+      - name: Verify Payment
+        run: bash task-1-stripe-connect/demo/3-test/02-verify-payment/02-verify-payment.sh
+
+      - name: Verify Transfers
+        run: bash task-1-stripe-connect/demo/3-test/03-verify-transfers/03-verify-transfers.sh
+
+      - name: Verify SCT Pattern
+        run: bash task-1-stripe-connect/demo/3-test/04-verify-sct-pattern/04-verify-sct-pattern.sh
+
+      - name: Verify Events
+        run: bash task-1-stripe-connect/demo/3-test/05-verify-events/05-verify-events.sh
