@@ -9,7 +9,7 @@ jobs:
     env:
       STRIPE_DEMO_KEY: ${{ secrets.STRIPE_TEST_KEY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Objective 2 - Create PaymentIntent
         run: bash task-1-stripe-connect/demo/1-Collect-Payment/01-create-payment-intent.sh
