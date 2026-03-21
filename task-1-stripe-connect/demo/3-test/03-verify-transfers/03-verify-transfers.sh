@@ -2,10 +2,10 @@
 # Verify transfers landed on connected accounts and platform balance is correct
 set -euo pipefail
 
-TR_RESTAURANT="tr_3TCrEaARsNxRMQkd0ObQbpZz"
-TR_COURIER="tr_3TCrEaARsNxRMQkd0GVAGXwL"
-CHARGE="ch_3TCrEaARsNxRMQkd0XXekMXZ"
 DIR="$(cd "$(dirname "$0")" && pwd)"
+TR_RESTAURANT=$(python3 -c "import json; print(json.load(open('$DIR/../../2-Route-Funds/01-transfer-restaurant-response.json'))['id'])")
+TR_COURIER=$(python3 -c "import json; print(json.load(open('$DIR/../../2-Route-Funds/02-transfer-courier-response.json'))['id'])")
+CHARGE=$(python3 -c "import json; print(json.load(open('$DIR/../../1-Collect-Payment/02-confirm-payment-intent-response.json'))['latest_charge'])")
 
 echo "=== Transfer to Restaurant ==="
 curl -s https://api.stripe.com/v1/transfers/$TR_RESTAURANT \
