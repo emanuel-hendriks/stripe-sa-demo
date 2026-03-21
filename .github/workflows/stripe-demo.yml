@@ -11,27 +11,5 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v6
-
-      - name: Objective 2 - Create PaymentIntent
-        run: bash task-1-stripe-connect/demo/1-Collect-Payment/01-create-payment-intent.sh
-
-      - name: Objective 2 - Confirm PaymentIntent
-        run: bash task-1-stripe-connect/demo/1-Collect-Payment/02-confirm-payment-intent.sh
-
-      - name: Objective 3 - Transfer to Restaurant
-        run: bash task-1-stripe-connect/demo/2-Route-Funds/01-transfer-restaurant.sh
-
-      - name: Objective 3 - Transfer to Courier
-        run: bash task-1-stripe-connect/demo/2-Route-Funds/02-transfer-courier.sh
-
-      - name: Verify - Payment
-        run: bash task-1-stripe-connect/demo/3-test/02-verify-payment/02-verify-payment.sh
-
-      - name: Verify - Transfers
-        run: bash task-1-stripe-connect/demo/3-test/03-verify-transfers/03-verify-transfers.sh
-
-      - name: Verify - SCT Pattern
-        run: bash task-1-stripe-connect/demo/3-test/04-verify-sct-pattern/04-verify-sct-pattern.sh
-
-      - name: Verify - Events
-        run: bash task-1-stripe-connect/demo/3-test/05-verify-events/05-verify-events.sh
+      - name: Run full demo (onboard, pay, transfer, verify)
+        run: bash ci/run-demo.sh
