@@ -8,6 +8,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       STRIPE_DEMO_KEY: ${{ secrets.STRIPE_TEST_KEY }}
+    defaults:
+      run:
+        working-directory: ./Stripe-Solutions-Architect-Tasks
     steps:
       - uses: actions/checkout@v6
 
