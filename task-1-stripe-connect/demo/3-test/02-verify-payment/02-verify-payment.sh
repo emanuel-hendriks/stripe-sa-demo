@@ -2,8 +2,8 @@
 # Verify PaymentIntent succeeded and charge is on the platform
 set -euo pipefail
 
+PI="pi_3TCrEaARsNxRMQkd0CmwllS8"
 DIR="$(cd "$(dirname "$0")" && pwd)"
-PI=$(python3 -c "import json; print(json.load(open('$DIR/../../1-Collect-Payment/02-confirm-payment-intent-response.json'))['id'])")
 
 echo "=== PaymentIntent ==="
 curl -s https://api.stripe.com/v1/payment_intents/$PI \
