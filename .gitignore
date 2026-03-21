@@ -3,6 +3,8 @@
 *.env
 .kiro/
 *-response.json
+task-1-stripe-connect/*/runs
+task-1-stripe-connect/demo/3-test/06-query-all-objects/runs/*
 *delete-existing-accounts*
 task-1-stripe-connect/presentation/
 task-1-stripe-connect/task-1-prompt.md

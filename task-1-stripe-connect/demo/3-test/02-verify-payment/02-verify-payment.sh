@@ -1,31 +1,28 @@
 #!/usr/bin/env bash
 # Verify PaymentIntent succeeded and charge is on the platform
-set -euo pipefail
-
+set -eo pipefail
+source ~/.bashrc
 DIR="$(cd "$(dirname "$0")" && pwd)"
-PI=$(python3 -c "import json; print(json.load(open('$DIR/../../1-Collect-Payment/02-confirm-payment-intent-response.json'))['id'])")
+DEMO="$DIR/../.."
+TS=$(date +%Y%m%d-%H%M%S)
+OUT="$DIR/runs/$TS"
+mkdir -p "$OUT"
 
+PI=$(python3 -c "import json; print(json.load(open('$DEMO/1-Collect-Payment/02-confirm-payment-intent-response.json'))['id'])")
+
+echo "=== Run: $TS ==="
+
+echo ""
 echo "=== PaymentIntent ==="
 curl -s https://api.stripe.com/v1/payment_intents/$PI \
   -u "$STRIPE_DEMO_KEY:" \
-  | python3 -c "
-import sys, json
-pi = json.load(sys.stdin)
-print(json.dumps({
-    'id': pi['id'],
-    'amount': pi['amount'],
-    'currency': pi['currency'],
-    'status': pi['status'],
-    'transfer_group': pi.get('transfer_group'),
-    'latest_charge': pi['latest_charge']
-}, indent=2))
-" | tee "$DIR/02-payment-intent.json"
+  | python3 -m json.tool | tee "$OUT/${TS}_payment-intent.json"
 
 echo ""
 echo "=== Verification ==="
 python3 -c "
 import json
-pi = json.load(open('$DIR/02-payment-intent.json'))
+pi = json.load(open('$OUT/${TS}_payment-intent.json'))
 checks = [
     ('Status is succeeded', pi['status'] == 'succeeded'),
     ('Amount is 2000 (EUR 20.00)', pi['amount'] == 2000),

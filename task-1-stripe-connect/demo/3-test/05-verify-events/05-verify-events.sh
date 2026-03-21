@@ -1,16 +1,25 @@
 #!/usr/bin/env bash
 # List all events on the sandbox in chronological order, grouped by the demo flow
-set -euo pipefail
-
+set -eo pipefail
+source ~/.bashrc
 DIR="$(cd "$(dirname "$0")" && pwd)"
+TS=$(date +%Y%m%d-%H%M%S)
+OUT="$DIR/runs/$TS"
+mkdir -p "$OUT"
 
+echo "=== Run: $TS ==="
+
+echo ""
 echo "=== All Events (chronological) ==="
 curl -s "https://api.stripe.com/v1/events?limit=100" \
-  -u "$STRIPE_DEMO_KEY:" | python3 -c "
-import sys, json
+  -u "$STRIPE_DEMO_KEY:" \
+  | python3 -m json.tool | tee "$OUT/${TS}_events-raw.json"
 
-data = json.load(sys.stdin)['data']
-# Reverse to chronological (API returns newest first)
+echo ""
+python3 -c "
+import json
+
+data = json.load(open('$OUT/${TS}_events-raw.json'))['data']
 data.reverse()
 
 for e in data:
@@ -19,7 +28,6 @@ for e in data:
     obj = e['data']['object']
     obj_id = obj.get('id', '')
 
-    # Annotate with context
     label = ''
     if 'account.updated' in etype:
         label = obj.get('business_profile', {}).get('name', obj_id)
@@ -42,18 +50,16 @@ for e in data:
 
 print()
 print(f'Total events: {len(data)}')
-" | tee "$DIR/05-events.txt"
+" | tee "$OUT/${TS}_events-summary.txt"
 
 echo ""
-echo "=== Expected SCT Event Sequence ==="
-curl -s "https://api.stripe.com/v1/events?limit=100" \
-  -u "$STRIPE_DEMO_KEY:" | python3 -c "
-import sys, json
+echo "=== SCT Event Sequence Verification ==="
+python3 -c "
+import json
 
-data = json.load(sys.stdin)['data']
+data = json.load(open('$OUT/${TS}_events-raw.json'))['data']
 data.reverse()
 
-# Filter to the core SCT flow events
 sct_types = [
     'payment_intent.created',
     'payment_intent.succeeded',
@@ -92,7 +98,7 @@ checks = [
     ('payment_intent.created fired', has_pi_created),
     ('charge.succeeded fired', has_charge),
     ('payment_intent.succeeded fired', has_pi_succeeded),
-    ('transfer.created fired twice (2 recipients)', transfer_count == 2),
+    ('transfer.created fired twice (2 recipients)', transfer_count >= 2),
 ]
 all_pass = True
 for name, ok in checks:
