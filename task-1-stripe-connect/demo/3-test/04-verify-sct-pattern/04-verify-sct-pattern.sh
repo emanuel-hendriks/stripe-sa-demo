@@ -2,11 +2,11 @@
 # Verify the fund flow is SCT (Separate Charges and Transfers), not Destination Charges
 set -euo pipefail
 
-PI="pi_3TCrEaARsNxRMQkd0CmwllS8"
-CHARGE="ch_3TCrEaARsNxRMQkd0XXekMXZ"
-TR_RESTAURANT="tr_3TCrEaARsNxRMQkd0ObQbpZz"
-TR_COURIER="tr_3TCrEaARsNxRMQkd0GVAGXwL"
 DIR="$(cd "$(dirname "$0")" && pwd)"
+PI=$(python3 -c "import json; print(json.load(open('$DIR/../../1-Collect-Payment/02-confirm-payment-intent-response.json'))['id'])")
+CHARGE=$(python3 -c "import json; print(json.load(open('$DIR/../../1-Collect-Payment/02-confirm-payment-intent-response.json'))['latest_charge'])")
+TR_RESTAURANT=$(python3 -c "import json; print(json.load(open('$DIR/../../2-Route-Funds/01-transfer-restaurant-response.json'))['id'])")
+TR_COURIER=$(python3 -c "import json; print(json.load(open('$DIR/../../2-Route-Funds/02-transfer-courier-response.json'))['id'])")
 
 echo "=== 1. PaymentIntent: charge lands on PLATFORM ==="
 curl -s "https://api.stripe.com/v1/payment_intents/$PI" \
