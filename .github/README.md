@@ -2,42 +2,41 @@
 
 ## What it does
 
-Runs the full Stripe Connect demo end-to-end against the live test API:
+Mirrors the live interview demo against the Stripe test API. Accounts are pre-created; the workflow runs Objectives 2 and 3 only:
 
-1. **Onboard** -- creates two Custom connected accounts (restaurant + courier) in DE, fulfills KYC
-2. **Pay** -- creates and confirms a EUR 20.00 PaymentIntent with `transfer_group`
-3. **Transfer** -- routes EUR 14.00 to restaurant and EUR 4.00 to courier via `POST /v1/transfers` with `source_transaction`
-4. **Verify** -- asserts 12 checks: payment status, amounts, SCT pattern (no `on_behalf_of`, no `transfer_data`, no `destination` on charge)
+1. **Objective 2: Pay** -- creates and confirms a EUR 20.00 PaymentIntent with `transfer_group`
+2. **Objective 3: Transfer** -- routes EUR 14.00 to restaurant and EUR 4.00 to courier via `POST /v1/transfers` with `source_transaction`
+3. **Verify** -- asserts 12 checks: payment status, amounts, SCT pattern (no `on_behalf_of`, no `transfer_data`)
 
 ## Trigger
 
-Manual only (`workflow_dispatch`). From the CLI:
+Manual only (`workflow_dispatch`):
 
 ```bash
 gh workflow run stripe-demo.yml
 ```
 
-Or from the GitHub Actions tab: click "Run workflow".
-
 ## Secrets
 
-| Name | Value | Where to find it |
-|------|-------|------------------|
-| `STRIPE_TEST_KEY` | `sk_test_...` | Stripe Dashboard > Developers > API keys |
+| Name | Description |
+|------|-------------|
+| `STRIPE_TEST_KEY` | `sk_test_...` from Stripe Dashboard |
+| `RESTAURANT_ACCT` | Connected account ID for the restaurant |
+| `COURIER_ACCT` | Connected account ID for the courier |
 
 Set via CLI:
 
 ```bash
 gh secret set STRIPE_TEST_KEY
+gh secret set RESTAURANT_ACCT --body "acct_..."
+gh secret set COURIER_ACCT --body "acct_..."
 ```
 
 ## Idempotency
 
-Each run uses `GITHUB_RUN_ID` as the idempotency key suffix, so runs never collide. Locally, falls back to Unix timestamp.
+Each run uses `GITHUB_RUN_ID` as the idempotency key suffix. Runs never collide. Locally, falls back to Unix timestamp.
 
-## Output
-
-All 12 checks must pass:
+## Expected output
 
 ```
 [PASS] PaymentIntent succeeded
