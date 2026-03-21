@@ -1,0 +1,10 @@
+  account.updated                                         None
+  payment_intent.created                                  EUR 20.00 order_001
+  charge.succeeded                                        EUR 20.00
+  payment_intent.succeeded                                EUR 20.00 order_001
+  charge.updated                                          EUR 20.00
+  transfer.created                                        EUR 14.00 -> acct_1TCrCTPIpZeThsJD
+  transfer.created                                        EUR 4.00 -> acct_1TCrCyAAxd0ePQfh
+  balance.available                                       
+
+Total events: 8

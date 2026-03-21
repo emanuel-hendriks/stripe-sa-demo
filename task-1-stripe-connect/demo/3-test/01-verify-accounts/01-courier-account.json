@@ -1,0 +1,12 @@
+{
+  "id": "acct_1TCrCyAAxd0ePQfh",
+  "business_type": "individual",
+  "charges_enabled": true,
+  "payouts_enabled": true,
+  "capabilities": {
+    "card_payments": "active",
+    "transfers": "active"
+  },
+  "currently_due": [],
+  "country": "DE"
+}

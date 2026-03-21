@@ -4,7 +4,6 @@
 .kiro/
 *-response.json
 *delete-existing-accounts*
-task-1-stripe-connect/demo/3-test/
 task-1-stripe-connect/presentation/
 task-1-stripe-connect/task-1-prompt.md
 powerpoint-reader.md
