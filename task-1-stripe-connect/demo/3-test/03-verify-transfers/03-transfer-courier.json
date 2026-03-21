@@ -1,9 +1,0 @@
-{
-  "id": "tr_3TCrEaARsNxRMQkd0GVAGXwL",
-  "amount": 400,
-  "currency": "eur",
-  "destination": "acct_1TCrCyAAxd0ePQfh",
-  "source_transaction": "ch_3TCrEaARsNxRMQkd0XXekMXZ",
-  "transfer_group": "order_001",
-  "destination_payment": "py_1TCrEyAAxd0ePQfhYO7Zc2bt"
-}

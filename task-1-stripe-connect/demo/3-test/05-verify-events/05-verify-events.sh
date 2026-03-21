@@ -4,7 +4,7 @@ set -eo pipefail
 source ~/.bashrc
 DIR="$(cd "$(dirname "$0")" && pwd)"
 TS=$(date +%Y%m%d-%H%M%S)
-OUT="$DIR/runs/$TS"
+OUT="$DIR/response/$TS"
 mkdir -p "$OUT"
 
 echo "=== Run: $TS ==="

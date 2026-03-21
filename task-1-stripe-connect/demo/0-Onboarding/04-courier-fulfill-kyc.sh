@@ -1,9 +1,10 @@
 #!/bin/bash
 # Step 2b: Fulfill Courier KYC (individual, DE) using Stripe test tokens
 source ~/.bashrc
-DIR="$(dirname "$0")"
+DIR="$(cd "$(dirname "$0")" && pwd)"
+mkdir -p "$DIR/response"
 
-ACCT=$(python3 -c "import json; print(json.load(open('$DIR/02-create-courier-response.json'))['id'])")
+ACCT=$(python3 -c "import json; print(json.load(open('$DIR/response/02-create-courier-response.json'))['id'])")
 echo "Courier account: $ACCT"
 
 echo ""
@@ -26,4 +27,4 @@ curl -s "https://api.stripe.com/v1/accounts/$ACCT" \
   -d "external_account[account_number]"="DE89370400440532013000" \
   -d "tos_acceptance[date]"="$(date +%s)" \
   -d "tos_acceptance[ip]"="127.0.0.1" \
-  | python3 -m json.tool | tee "$DIR/04-courier-kyc-response.json"
+  | python3 -m json.tool | tee "$DIR/response/04-courier-kyc-response.json"

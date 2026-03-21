@@ -1,9 +1,10 @@
 #!/bin/bash
 # Step 2a: Fulfill Restaurant KYC (company, DE) using Stripe test tokens
 source ~/.bashrc
-DIR="$(dirname "$0")"
+DIR="$(cd "$(dirname "$0")" && pwd)"
+mkdir -p "$DIR/response"
 
-ACCT=$(python3 -c "import json; print(json.load(open('$DIR/01-create-restaurant-response.json'))['id'])")
+ACCT=$(python3 -c "import json; print(json.load(open('$DIR/response/01-create-restaurant-response.json'))['id'])")
 echo "Restaurant account: $ACCT"
 
 echo ""
@@ -53,4 +54,4 @@ echo ""
 echo "=== Final account status ==="
 curl -s "https://api.stripe.com/v1/accounts/$ACCT" \
   -u "$STRIPE_DEMO_KEY:" \
-  | python3 -m json.tool | tee "$DIR/03-restaurant-kyc-response.json"
+  | python3 -m json.tool | tee "$DIR/response/03-restaurant-kyc-response.json"

@@ -7,7 +7,7 @@ source ~/.bashrc
 DIR="$(cd "$(dirname "$0")" && pwd)"
 DEMO="$DIR/../.."
 TS=$(date +%Y%m%d-%H%M%S)
-OUT="$DIR/runs/all-objects/$TS"
+OUT="$DIR/response/all-objects/$TS"
 mkdir -p "$OUT/payment" "$OUT/transfers" "$OUT/destination-payments" "$OUT/balances"
 
 # Read IDs from response files

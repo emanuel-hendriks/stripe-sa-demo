@@ -8,7 +8,7 @@ source ~/.bashrc
 DIR="$(cd "$(dirname "$0")" && pwd)"
 DEMO="$DIR/../.."
 TS=$(date +%Y%m%d-%H%M%S)
-OUT="$DIR/runs/destination-payments/$TS"
+OUT="$DIR/response/destination-payments/$TS"
 mkdir -p "$OUT"
 
 RESTAURANT=$(python3 -c "import json; print(json.load(open('$DEMO/0-Onboarding/01-create-restaurant-response.json'))['id'])")

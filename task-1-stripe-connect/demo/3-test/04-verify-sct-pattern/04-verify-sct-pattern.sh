@@ -5,7 +5,7 @@ source ~/.bashrc
 DIR="$(cd "$(dirname "$0")" && pwd)"
 DEMO="$DIR/../.."
 TS=$(date +%Y%m%d-%H%M%S)
-OUT="$DIR/runs/$TS"
+OUT="$DIR/response/$TS"
 mkdir -p "$OUT"
 
 PI=$(python3 -c "import json; print(json.load(open('$DEMO/1-Collect-Payment/02-confirm-payment-intent-response.json'))['id'])")
