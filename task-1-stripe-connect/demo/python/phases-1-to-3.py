@@ -7,7 +7,7 @@ Stripe Connect Demo -- Phases 1-3 (Clean Sandbox)
   Phase 3: Route funds via Separate Charges & Transfers
 
 Designed for a fresh sandbox so dashboard events/logs show only demo activity.
-Uses STRIPE_MAGENTA_KEY env var.
+Uses STRIPE_DEMO_KEY env var.
 
 Usage:
   python3 phases-1-to-3.py                # run straight through
@@ -19,9 +19,9 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEMO_DIR = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, DEMO_DIR)
 
-stripe.api_key = os.environ.get("STRIPE_MAGENTA_KEY", "")
+stripe.api_key = os.environ.get("STRIPE_DEMO_KEY", "")
 if not stripe.api_key:
-    sys.exit("Set STRIPE_MAGENTA_KEY in your environment.")
+    sys.exit("Set STRIPE_DEMO_KEY in your environment.")
 
 RESP_DIR_ONBOARD = f"{DEMO_DIR}/0-Onboarding/response"
 RESP_DIR_PAYMENT = f"{DEMO_DIR}/1-Collect-Payment/response"
