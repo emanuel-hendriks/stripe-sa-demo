@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Stripe Connect Demo -- Objectives 2 & 3 (Live Presentation)
-============================================================
+Stripe Connect Demo -- Objectives 1, 2 & 3 (Live Presentation)
+===============================================================
+  Objective 1: Review onboarded accounts (read-only)
   Objective 2: Collect payment from customer (PaymentIntent, EUR 20.00)
   Objective 3: Route funds via Separate Charges & Transfers
 
@@ -12,6 +13,25 @@ import stripe, time, os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from demo_utils import save, load, pp, banner, wait
 from log_util import start_log
+
+# ---------------------------------------------------------------------------
+# Objective 1 -- Onboard (review pre-created accounts)
+# ---------------------------------------------------------------------------
+def review_onboarding():
+    banner("OBJECTIVE 1: Onboard -- Connected Accounts (pre-created)")
+
+    restaurant_id = load("restaurant")["id"]
+    courier_id = load("courier")["id"]
+
+    print("\n  >> Retrieve Restaurant account")
+    r = stripe.Account.retrieve(restaurant_id)
+    pp(r, ["id", "type", "country", "business_type", "charges_enabled", "payouts_enabled"])
+
+    wait()
+
+    print("  >> Retrieve Courier account")
+    c = stripe.Account.retrieve(courier_id)
+    pp(c, ["id", "type", "country", "business_type", "charges_enabled", "payouts_enabled"])
 
 # ---------------------------------------------------------------------------
 # Objective 2 -- Collect Payment
@@ -85,6 +105,8 @@ def route_funds():
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     start_log("demo")
+    review_onboarding()
+    wait()
     collect_payment()
     wait()
     route_funds()
