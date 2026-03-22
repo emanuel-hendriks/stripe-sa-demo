@@ -1,6 +1,6 @@
 # Stripe Solutions Architect -- Technical Screen
 
-Two tasks for the SA interview at Stripe (Dublin, EMEA/DACH).
+Two tasks demonstrating Stripe Connect integration and reverse API design.
 
 ---
 
