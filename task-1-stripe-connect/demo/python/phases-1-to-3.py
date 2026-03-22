@@ -6,63 +6,24 @@ Stripe Connect Demo -- Phases 1-3 (Clean Sandbox)
   Phase 2: Collect payment from customer (PaymentIntent EUR 20.00)
   Phase 3: Route funds via Separate Charges & Transfers
 
-Designed for a fresh sandbox so dashboard events/logs show only demo activity.
-Uses STRIPE_DEMO_KEY env var.
-
 Usage:
   python3 phases-1-to-3.py                # run straight through
   python3 phases-1-to-3.py --interactive  # pause between phases for narration
 """
-import stripe, json, os, sys, time, argparse
+import stripe, time, os, sys, argparse
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-DEMO_DIR = os.path.dirname(SCRIPT_DIR)
-sys.path.insert(0, DEMO_DIR)
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from demo_utils import save, load, pp, banner, wait
+from log_util import start_log
 
-stripe.api_key = os.environ.get("STRIPE_DEMO_KEY", "")
-if not stripe.api_key:
-    sys.exit("Set STRIPE_DEMO_KEY in your environment.")
-
-RESP_DIR_ONBOARD = f"{DEMO_DIR}/0-Onboarding/response"
-RESP_DIR_PAYMENT = f"{DEMO_DIR}/1-Collect-Payment/response"
-RESP_DIR_FUNDS   = f"{DEMO_DIR}/2-Route-Funds/response"
-
-RESP = {
-    "restaurant":      f"{RESP_DIR_ONBOARD}/01-create-restaurant-response.json",
-    "restaurant_kyc":  f"{RESP_DIR_ONBOARD}/03-restaurant-kyc-response.json",
-    "courier":         f"{RESP_DIR_ONBOARD}/02-create-courier-response.json",
-    "courier_kyc":     f"{RESP_DIR_ONBOARD}/04-courier-kyc-response.json",
-    "pi_create":       f"{RESP_DIR_PAYMENT}/01-create-payment-intent-response.json",
-    "pi_confirm":      f"{RESP_DIR_PAYMENT}/02-confirm-payment-intent-response.json",
-    "xfer_restaurant": f"{RESP_DIR_FUNDS}/01-transfer-restaurant-response.json",
-    "xfer_courier":    f"{RESP_DIR_FUNDS}/02-transfer-courier-response.json",
-}
-
-def save(key, obj):
-    os.makedirs(os.path.dirname(RESP[key]), exist_ok=True)
-    with open(RESP[key], "w") as f:
-        json.dump(obj, f, indent=2)
-
-def load(key):
-    with open(RESP[key]) as f:
-        return json.load(f)
-
-def pp(obj, fields):
-    print(json.dumps({k: obj[k] for k in fields if k in obj}, indent=2))
-
-def banner(title):
-    print(f"\n{'='*60}\n  {title}\n{'='*60}")
-
-def wait(args):
+def iwait(args):
     if args.interactive:
-        input("\n  [Enter to continue]\n")
+        wait()
 
 # -- Phase 1: Onboard ---------------------------------------------------
 def onboard(args):
     banner("PHASE 1: Onboard Connected Accounts (Custom, DE)")
-    ts = time.strftime("%Y%m%d-%H%M%S")
 
-    # Restaurant (company, MCC 5812)
     print("\n  >> Create Restaurant account (company/DE)")
     restaurant = stripe.Account.create(
         type="custom", country="DE",
@@ -73,7 +34,7 @@ def onboard(args):
     save("restaurant", restaurant)
     pp(restaurant, ["id", "type", "country", "business_type"])
 
-    wait(args)
+    iwait(args)
 
     print("  >> Fulfill Restaurant KYC (company details, representative, bank account, ToS)")
     stripe.Account.modify(restaurant.id,
@@ -99,9 +60,8 @@ def onboard(args):
     save("restaurant_kyc", r)
     pp(r, ["id", "charges_enabled", "payouts_enabled"])
 
-    wait(args)
+    iwait(args)
 
-    # Courier (individual, MCC 4215)
     print("\n  >> Create Courier account (individual/DE)")
     courier = stripe.Account.create(
         type="custom", country="DE",
@@ -112,7 +72,7 @@ def onboard(args):
     save("courier", courier)
     pp(courier, ["id", "type", "country", "business_type"])
 
-    wait(args)
+    iwait(args)
 
     print("  >> Fulfill Courier KYC (individual details, bank account, ToS)")
     c = stripe.Account.modify(courier.id,
@@ -154,7 +114,7 @@ def collect_payment(args):
     save("pi_create", pi)
     pp(pi, ["id", "amount", "currency", "status", "transfer_group"])
 
-    wait(args)
+    iwait(args)
 
     print("  >> Confirm with pm_card_bypassPending (funds immediately available)")
     pi = stripe.PaymentIntent.confirm(pi.id, payment_method="pm_card_bypassPending")
@@ -182,7 +142,7 @@ def route_funds(args):
     save("xfer_restaurant", xfer_r)
     pp(xfer_r, ["id", "amount", "currency", "destination"])
 
-    wait(args)
+    iwait(args)
 
     print("  >> Transfer EUR 4.00 -> Courier")
     xfer_c = stripe.Transfer.create(
@@ -202,13 +162,12 @@ if __name__ == "__main__":
     parser.add_argument("--interactive", action="store_true", help="Pause between phases")
     args = parser.parse_args()
 
-    from log_util import start_log
     start_log("phases-1-to-3")
 
     onboard(args)
-    wait(args)
+    iwait(args)
     collect_payment(args)
-    wait(args)
+    iwait(args)
     route_funds(args)
 
     banner("DONE")
