@@ -81,7 +81,13 @@ Design and demo a payment flow for a delivery platform with four parties: platfo
     └── deliverable-task-2.md                # API spec: Maps.co <-> Food.co partner integration
 ```
 
-Two parallel implementations exist for the Stripe calls: `python/` uses the SDK for the live demo, `*.sh` scripts + `ci/run-demo.sh` use curl for CI and step-by-step inspection. The `response/` directories chain the steps -- each script writes JSON, the next reads IDs from it.
+Three independent execution paths exist -- each is self-contained and writes to the same `response/` directories:
+
+1. **Python SDK** (live demo): `onboard.py` -> `demo.py` (or `phases-1-to-3.py` for all three objectives)
+2. **Shell/curl** (step-by-step): `0-Onboarding/*.sh` -> `1-Collect-Payment/*.sh` -> `2-Route-Funds/*.sh`
+3. **CI** (GitHub Actions): `ci/run-demo.sh` -- skips onboarding, uses pre-created accounts from secrets
+
+Paths 1 and 2 both write response JSON to the same directories, so they share the `3-test/` verification scripts. Do not mix paths mid-run -- pick one and run it end to end.
 
 ### Stripe SDK methods used
 
