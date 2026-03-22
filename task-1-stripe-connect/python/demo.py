@@ -55,7 +55,7 @@ def collect_payment():
         idempotency_key=f"payment-order-{ts}",
     )
     save("pi_create", pi)
-    pp(pi, ["id", "amount", "currency", "status", "transfer_group"])
+    pp(pi, ["id", "amount", "currency", "status", "transfer_group", "transfer_data", "on_behalf_of"])
 
     wait()
 
