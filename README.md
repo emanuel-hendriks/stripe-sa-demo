@@ -8,13 +8,11 @@ Two tasks for the SA interview at Stripe (Dublin, EMEA/DACH).
 
 Design and demo a payment flow for a delivery platform with four parties: platform, customer, restaurant, courier.
 
-### Objectives
+**Objective 1: Onboard** -- Create Custom connected accounts (restaurant as company/DE, courier as individual/DE) and fulfill KYC via the API.
 
-**Objective 1: Onboard** -- Create Custom connected accounts (restaurant as company/DE, courier as individual/DE) and fulfill KYC via the API. Restaurant requires company details, representative person, and beneficial ownership declaration (EU AML). Courier requires individual identity only.
+**Objective 2: Collect Payment** -- Create a EUR 20.00 PaymentIntent on the platform account using Separate Charges and Transfers.
 
-**Objective 2: Collect Payment** -- Create a EUR 20.00 PaymentIntent on the platform account using the Separate Charges and Transfers pattern (`transfer_group`, no `transfer_data`, no `on_behalf_of`). Confirm with a test card.
-
-**Objective 3: Route Funds** -- Split the charge via two `POST /v1/transfers` calls with `source_transaction`: EUR 14.00 to restaurant, EUR 4.00 to courier, EUR 2.00 retained by platform implicitly.
+**Objective 3: Route Funds** -- Split the charge via two transfers with `source_transaction`: EUR 14 restaurant, EUR 4 courier, EUR 2 platform.
 
 ### Project structure
 
@@ -81,39 +79,13 @@ Design and demo a payment flow for a delivery platform with four parties: platfo
     └── deliverable-task-2.md                # API spec: Maps.co <-> Food.co partner integration
 ```
 
-Three independent execution paths exist -- each is self-contained and writes to the same `response/` directories:
+### Execution paths
 
-1. **Python SDK** (live demo): `onboard.py` -> `demo.py` (or `phases-1-to-3.py` for all three objectives)
+Three independent paths -- each is self-contained. Do not mix mid-run.
+
+1. **Python SDK** (live demo): `onboard.py` -> `demo.py` (or `phases-1-to-3.py` for all three)
 2. **Shell/curl** (step-by-step): `0-Onboarding/*.sh` -> `1-Collect-Payment/*.sh` -> `2-Route-Funds/*.sh`
 3. **CI** (GitHub Actions): `ci/run-demo.sh` -- skips onboarding, uses pre-created accounts from secrets
-
-Paths 1 and 2 both write response JSON to the same directories, so they share the `3-test/` verification scripts. Do not mix paths mid-run -- pick one and run it end to end.
-
-### Stripe SDK methods used
-
-| Script | SDK method | REST endpoint | Purpose |
-|--------|-----------|---------------|---------|
-| `onboard.py` | `stripe.Account.create()` | `POST /v1/accounts` | Create Custom connected account |
-| `onboard.py` | `stripe.Account.modify()` | `POST /v1/accounts/{id}` | Submit KYC data + bank account |
-| `onboard.py` | `stripe.Account.create_person()` | `POST /v1/accounts/{id}/persons` | Add representative/owner (company) |
-| `onboard.py` | `stripe.Account.retrieve()` | `GET /v1/accounts/{id}` | Verify charges_enabled/payouts_enabled |
-| `demo.py` | `stripe.PaymentIntent.create()` | `POST /v1/payment_intents` | EUR 20.00 charge with `transfer_group` |
-| `demo.py` | `stripe.PaymentIntent.confirm()` | `POST /v1/payment_intents/{id}/confirm` | Attach test card, move to `succeeded` |
-| `demo.py` | `stripe.Transfer.create()` x2 | `POST /v1/transfers` | Route funds to restaurant and courier |
-
-### Run locally
-
-```bash
-export STRIPE_DEMO_KEY="sk_test_..."
-cd task-1-stripe-connect/demo/python
-source .venv/bin/activate
-
-# one-time setup
-python3 ../0-Onboarding/onboard.py
-
-# live demo
-python3 demo.py
-```
 
 ---
 
@@ -122,25 +94,3 @@ python3 demo.py
 Design a reverse API that delivery partners (Food.co) implement so Maps.co can offer food ordering within its maps app. Covers restaurant selection, menu viewing, order placement, and order tracking.
 
 Deliverable: `task-2-reverse-api/deliverable-task-2.md`
-
----
-
-## CI
-
-GitHub Actions workflow (`stripe-demo.yml`) runs Objectives 2 and 3 against the Stripe test API on manual dispatch. Uses `curl` against the REST API directly (no SDK dependency in CI).
-
-```bash
-gh workflow run stripe-demo.yml
-```
-
-### Secrets
-
-| Name | Description |
-|------|-------------|
-| `STRIPE_TEST_KEY` | `sk_test_...` from Stripe Dashboard |
-| `RESTAURANT_ACCT` | Pre-created connected account ID |
-| `COURIER_ACCT` | Pre-created connected account ID |
-
-### Verification
-
-12 assertions: payment status, amounts, currency, `transfer_group` propagation, `source_transaction` linkage, SCT pattern confirmation (no `on_behalf_of`, no `transfer_data`).

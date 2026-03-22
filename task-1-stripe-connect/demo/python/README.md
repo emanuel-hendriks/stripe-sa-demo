@@ -91,3 +91,31 @@ The platform's 10% commission stays in its Stripe balance automatically. In SCT,
 ## Why SCT over Destination Charges
 
 Destination Charges (`transfer_data[destination]`) only support a single recipient per charge. This delivery platform needs to split one payment across two connected accounts (restaurant + courier), which requires Separate Charges and Transfers. SCT also decouples transfers from the charge, allowing the courier transfer to be created later when a driver accepts the delivery.
+
+---
+
+## All Stripe SDK methods (across onboard.py + demo.py)
+
+| Script | SDK method | REST endpoint | Purpose |
+|--------|-----------|---------------|---------|
+| `onboard.py` | `stripe.Account.create()` | `POST /v1/accounts` | Create Custom connected account |
+| `onboard.py` | `stripe.Account.modify()` | `POST /v1/accounts/{id}` | Submit KYC data + bank account |
+| `onboard.py` | `stripe.Account.create_person()` | `POST /v1/accounts/{id}/persons` | Add representative/owner (company) |
+| `onboard.py` | `stripe.Account.retrieve()` | `GET /v1/accounts/{id}` | Verify charges_enabled/payouts_enabled |
+| `demo.py` | `stripe.PaymentIntent.create()` | `POST /v1/payment_intents` | EUR 20.00 charge with `transfer_group` |
+| `demo.py` | `stripe.PaymentIntent.confirm()` | `POST /v1/payment_intents/{id}/confirm` | Attach test card, move to `succeeded` |
+| `demo.py` | `stripe.Transfer.create()` x2 | `POST /v1/transfers` | Route funds to restaurant and courier |
+
+## Run locally
+
+```bash
+export STRIPE_DEMO_KEY="sk_test_..."
+cd task-1-stripe-connect/demo/python
+source .venv/bin/activate
+
+# one-time setup
+python3 ../0-Onboarding/onboard.py
+
+# live demo
+python3 demo.py
+```
