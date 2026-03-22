@@ -1,14 +1,29 @@
-# Stripe Connect Demo -- Objectives 2 & 3
+# Stripe Connect Demo -- Objectives 1, 2 & 3
 
-Python script using the `stripe` SDK (v14.4.1) to demonstrate payment collection and fund routing for an on-demand delivery platform via Stripe Connect.
+Python script using the `stripe` SDK (v14.4.1) to demonstrate onboarding review, payment collection, and fund routing for an on-demand delivery platform via Stripe Connect.
 
-The script makes four Stripe API calls through the Python SDK. All calls use `stripe.api_key` set to a platform-level test secret key (`sk_test_...`), authenticated via `demo_utils.py` on import. Each call includes an `idempotency_key` derived from the current timestamp to ensure safe retries.
+The script makes six Stripe API calls through the Python SDK. All calls use `stripe.api_key` set to a platform-level test secret key (`sk_test_...`), authenticated via `demo_utils.py` on import. Mutating calls include an `idempotency_key` derived from the current timestamp to ensure safe retries.
+
+---
+
+## Objective 1: Onboard -- Review Connected Accounts
+
+### Steps 1-2 -- `stripe.Account.retrieve()` -> `GET /v1/accounts/{id}` (x2)
+
+```python
+r = stripe.Account.retrieve(restaurant_id)
+c = stripe.Account.retrieve(courier_id)
+```
+
+Retrieves the two Custom connected accounts created by `onboard.py`. This is a read-only review step for the live presentation -- it confirms the accounts exist and shows their current state.
+
+Key fields displayed: `id`, `type`, `country`, `business_type`, `charges_enabled`, `payouts_enabled`. Both must show `charges_enabled: true` and `payouts_enabled: true` for the demo to proceed. If either is `false`, KYC requirements are outstanding and `onboard.py` needs to be re-run.
 
 ---
 
 ## Objective 2: Collect Payment (EUR 20.00)
 
-### Step 1 -- `stripe.PaymentIntent.create()` -> `POST /v1/payment_intents`
+### Step 3 -- `stripe.PaymentIntent.create()` -> `POST /v1/payment_intents`
 
 ```python
 pi = stripe.PaymentIntent.create(
@@ -24,9 +39,11 @@ Creates a PaymentIntent on the platform account. The Separate Charges and Transf
 
 `transfer_group="order_001"` is an organizational tag that propagates to the charge and links it to the transfers in Objective 3. `metadata` embeds both connected account IDs for traceability in the Dashboard and webhook payloads.
 
+The `pp()` call displays `transfer_data` and `on_behalf_of` alongside `id`, `amount`, `currency`, `status`, and `transfer_group`. Both will show as `null` in the response, confirming visually that this is SCT and not a Destination Charge.
+
 Returns `status: requires_payment_method` -- the PaymentIntent exists but has no card attached.
 
-### Step 2 -- `stripe.PaymentIntent.confirm()` -> `POST /v1/payment_intents/{id}/confirm`
+### Step 4 -- `stripe.PaymentIntent.confirm()` -> `POST /v1/payment_intents/{id}/confirm`
 
 ```python
 pi = stripe.PaymentIntent.confirm(pi.id, payment_method="pm_card_bypassPending")
@@ -42,9 +59,9 @@ Returns `status: succeeded` and `latest_charge: ch_...` -- the charge ID that an
 
 ## Objective 3: Route Funds via Separate Charges & Transfers
 
-The script reads `latest_charge` from the Step 2 response file, then creates two transfers against that charge. The platform retains the remainder.
+The script reads `latest_charge` from the Step 4 response file, then creates two transfers against that charge. The platform retains the remainder.
 
-### Step 3 -- `stripe.Transfer.create()` -> `POST /v1/transfers` (Restaurant)
+### Step 5 -- `stripe.Transfer.create()` -> `POST /v1/transfers` (Restaurant)
 
 ```python
 xfer_r = stripe.Transfer.create(
@@ -57,7 +74,7 @@ xfer_r = stripe.Transfer.create(
 
 Moves EUR 14.00 from the platform balance to the restaurant's connected account. `source_transaction=charge_id` ties the transfer to the original charge: the transfer succeeds immediately even if the charge funds are still pending, but funds only become available on the connected account when the source charge settles. This also enables Stripe to auto-reverse the transfer if the charge is disputed.
 
-### Step 4 -- `stripe.Transfer.create()` -> `POST /v1/transfers` (Courier)
+### Step 6 -- `stripe.Transfer.create()` -> `POST /v1/transfers` (Courier)
 
 ```python
 xfer_c = stripe.Transfer.create(
@@ -84,6 +101,7 @@ The platform's 10% commission stays in its Stripe balance automatically. In SCT,
 
 | SDK call | REST endpoint | Object created | Key parameter |
 |----------|--------------|----------------|---------------|
+| `stripe.Account.retrieve()` x2 | `GET /v1/accounts/{id}` | -- (read-only) | account ID from `onboard.py` |
 | `stripe.PaymentIntent.create()` | `POST /v1/payment_intents` | `pi_...` | `transfer_group` (SCT pattern) |
 | `stripe.PaymentIntent.confirm()` | `POST /v1/payment_intents/{id}/confirm` | `ch_...` (via `latest_charge`) | `payment_method` (test card) |
 | `stripe.Transfer.create()` x2 | `POST /v1/transfers` | `tr_...` | `source_transaction`, `destination` |
@@ -102,6 +120,7 @@ Destination Charges (`transfer_data[destination]`) only support a single recipie
 | `onboard.py` | `stripe.Account.modify()` | `POST /v1/accounts/{id}` | Submit KYC data + bank account |
 | `onboard.py` | `stripe.Account.create_person()` | `POST /v1/accounts/{id}/persons` | Add representative/owner (company) |
 | `onboard.py` | `stripe.Account.retrieve()` | `GET /v1/accounts/{id}` | Verify charges_enabled/payouts_enabled |
+| `demo.py` | `stripe.Account.retrieve()` x2 | `GET /v1/accounts/{id}` | Review connected accounts (Obj 1) |
 | `demo.py` | `stripe.PaymentIntent.create()` | `POST /v1/payment_intents` | EUR 20.00 charge with `transfer_group` |
 | `demo.py` | `stripe.PaymentIntent.confirm()` | `POST /v1/payment_intents/{id}/confirm` | Attach test card, move to `succeeded` |
 | `demo.py` | `stripe.Transfer.create()` x2 | `POST /v1/transfers` | Route funds to restaurant and courier |
