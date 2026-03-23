@@ -15,27 +15,34 @@ The frontend team has built a working UX. The delivery partners have agreed to i
 **Design objectives:**
 1. High-level architecture between Map.co and Food.co partners
 2. API endpoints each Food.co partner must implement, with key request/response fields
-3. Additional functionality Map.co needs to expose to each partner
+3. Additional functionality Map.co needs to expose to each partner 
+
+1. Webhook receiver (POST /v1/webhooks/delivery-events) -- partners push order status updates here. 
+Map.co has to expose this endpoint, document the expected payload format, provide the HMAC shared 
+secret, and define the retry policy.
+
+2. Partner registration/onboarding -- partners need to receive their API credentials (api_key for 
+Map.co to authenticate against them) and webhook secret (for them to sign calls to Map.co). Map.co 
+exposes this provisioning flow.
+
 
 ---
 
 ## The Problem
 
-Map.co has hundreds of millions of users searching for places on a map. Food.co and other delivery companies have restaurants, couriers, and logistics. The business opportunity is obvious: let Map.co users order food without leaving the app.
+Map.co has hundreds of millions of users. Food.co has restaurants, couriers, and logistics. The opportunity: let users order food without leaving the map.
 
-The naive approach is to build a custom integration for each delivery partner. Map.co engineers study Food.co's API, write a connector, then do the same for MealDash, QuickBite, and every other partner. Each partner has different endpoints, different data formats, different authentication, different error codes. This creates N separate integrations that must be maintained independently. It doesn't scale.
+The naive approach -- build a custom integration per partner -- doesn't scale. N partners means N connectors with different endpoints, data formats, auth, and error codes, all maintained independently.
 
-The reverse API solves this by inverting the relationship. Instead of Map.co adapting to N different partner APIs, Map.co publishes one spec and all partners adapt to it. Adding a new partner means they implement the same contract — Map.co's code doesn't change. This is the same principle behind USB: one standard plug, every device manufacturer conforms to it.
+The reverse API inverts this. Map.co publishes one spec; all partners conform to it. Adding a partner means they implement the same contract -- Map.co's code doesn't change. Same principle as USB: one standard plug, every manufacturer adapts. Partners agree because Map.co's distribution is the leverage -- access to demand they can't generate alone.
 
-Why would partners agree? Because Map.co has hundreds of millions of users. The distribution is the leverage — partners get access to demand they can't generate on their own. This is the same dynamic as Stripe: merchants implement Stripe's API because Stripe gives them access to payment infrastructure they can't build themselves.
-
-The API supports four operations that map to the user journey: find nearby restaurants, browse a menu, place an order, and track it until delivery. Everything else — payment, user accounts, the map UI — stays on Map.co's side.
+The API covers four operations matching the user journey: find restaurants, browse a menu, place an order, track delivery. Everything else -- payment, user accounts, the map UI -- stays on Map.co's side.
 
 ---
 
 ## Architecture Overview
 
-Three systems, two communication patterns. RESTful API with webhook callbacks — REST for the synchronous request-response flow, webhooks for the asynchronous event-driven flow.
+Two systems, two communication patterns. Map.co on one side, partners on the other. REST for the synchronous request-response flow, webhooks for the asynchronous event-driven flow.
 
 ### System Diagram
 
@@ -56,186 +63,50 @@ graph LR
     Webhook -- "7" --> DB
 ```
 
-**Map.co App** — the user interface. Shows restaurants, menus, order form, live tracking.
+**Nodes**
 
-**Map.co Backend** — the orchestrator. Receives user actions, calls the partner API, stores order state, receives webhooks. Never exposes partner APIs directly to the app. This gives Map.co control over caching, error handling, and partner failover.
+- **Map.co App** -- User interface: restaurants, menus, order form, live tracking.
+- **Map.co Backend** -- Orchestrator. Calls partner APIs, stores order state, receives webhooks. Never exposes partner APIs directly to the app (controls caching, error handling, failover).
+- **Food.co Partner API** -- Every partner implements the same contract. Map.co talks to all of them identically.
+- **Webhook Receiver** -- Listens at `POST /v1/webhooks/delivery-events`. Validates HMAC signature, deduplicates on `event_id`, writes status to the Order State DB. Ingestion point for all partner-pushed events.
+- **Order State DB** -- Map.co's source of truth for order status. Every change (webhook or polling fallback) lands here. `status_history` timestamps power per-partner SLA enforcement (e.g., detecting courier no-shows).
 
-**Food.co Partner API** — each delivery partner implements the same API contract. Food.co, MealDash, QuickBite all expose identical endpoints. Map.co talks to all of them the same way.
+**Edges**
 
-**Why a reverse API?** Map.co defines the contract. Partners implement it. The alternative — Map.co integrating against each partner's proprietary API — doesn't scale. One spec, many implementors.
+Edges 1--4 are synchronous (user-initiated request-response). Edge 5 is asynchronous (partner-pushed).
 
-### Edge Descriptions
+1. **App -> Backend** -- User action (open map, tap restaurant, confirm order) sent to backend.
+2. **Backend -> App** -- Response rendered in UI (restaurant list, menu, order confirmation, tracking status).
+3. **Backend -> Partner API** -- The core boundary. Map.co calls the partner over HTTP using the reverse API contract. This is the design surface of the entire system.
+4. **Partner API -> Backend** -- JSON response (restaurant data, order confirmation, status).
+5. **Partner -> Webhook Receiver** -- Async push when state changes on the partner side (courier assigned, food ready, delivered).
 
-Edges 1–4 are synchronous: the user does something, and the systems exchange requests and responses in real time. Edges 5 and 7 are asynchronous: the partner pushes updates to Map.co when something changes on their side, without the user asking.
+## Sync path -- user-initiated, request-response.
 
-**1. User action → Backend.** The user interacts with the Map.co app — opens the map, taps a restaurant, confirms an order, checks delivery status. The app sends the action to the Map.co backend.
+Covers restaurant discovery, menu browsing, order placement, and cancellation. User does something 
+in the app, Backend calls the partner, partner responds, Backend writes to DB and returns to the 
+app. The user is waiting for the response.
 
-```
-POST /internal/search-restaurants
-{ "lat": 52.52, "lng": 13.40, "radius_km": 5 }
-```
+Examples: user opens the map -> Backend calls GET `/v1/restaurants` -> partner returns nearby 
+restaurants -> app renders them. User confirms order -> Backend calls `POST /v1/orders` -> partner 
+returns `order_id` and confirmed status -> Backend persists the order record to DB -> app shows 
+confirmation.
 
-**2. Backend → App (response).** The backend returns data to the app for rendering: a list of nearby restaurants, a restaurant's menu, an order confirmation, or the current delivery status.
+##  Async path -- partner-initiated, event-driven.
 
-```json
-{
-  "restaurants": [
-    { "id": "rest_abc123", "name": "Pizza Hut", "cuisine": "italian",
-      "estimated_delivery_min": 35, "is_open": true }
-  ]
-}
-```
+Covers order tracking. After the order is placed, the user isn't triggering anything -- state 
+changes happen on the partner's side (kitchen starts cooking, courier picks up, courier delivers). 
+The partner pushes these via webhook to Map.co's receiver, which validates the signature, 
+deduplicates, writes to DB, and pushes to the user's app over WebSocket.
 
-**3. Backend → Partner API (request).** The backend calls the Food.co partner API over HTTP. This is the core of the entire design — the boundary between Map.co's system and Food.co's system. The reverse API contract governs what crosses this boundary. HTTP is the transport because it's the lowest common denominator: every partner already has HTTP infrastructure, it works across firewalls, and it's what the industry standardizes on for public APIs.
+Examples: courier picks up the food -> partner POSTs order.picked_up webhook -> receiver writes to 
+DB -> app updates the tracking screen in real time. Food is delivered -> partner POSTs 
+order.delivered -> receiver writes to DB -> app shows "delivered."
 
-```
-GET https://api.foodco.example/v1/restaurants?lat=52.52&lng=13.40&radius_km=5
-Authorization: Bearer mk_live_...
-```
+The direction of communication flips: in the sync path, Map.co calls partners. In the async path, 
+partners call Map.co.
 
-Order placement example:
 
-```
-POST https://api.foodco.example/v1/orders
-Authorization: Bearer mk_live_...
-Idempotency-Key: mapco_order_12345
-
-{
-  "restaurant_id": "rest_abc123",
-  "items": [{ "item_id": "item_001", "quantity": 2 }],
-  "delivery_address": { "street": "Unter den Linden 1", "city": "Berlin", "postal_code": "10117", "country": "DE" },
-  "payment_reference": "mapco_pay_xyz789"
-}
-```
-
-**4. Partner API → Backend (response).** The partner returns a JSON response.
-
-Restaurant listing example:
-
-```json
-{
-  "restaurants": [
-    { "id": "rest_abc123", "name": "Pizza Hut", "lat": 52.5200, "lng": 13.4050,
-      "cuisine": "italian", "rating": 4.6, "estimated_delivery_min": 35,
-      "is_open": true, "min_order_amount": 1500 }
-  ],
-  "total": 87, "limit": 20, "offset": 0
-}
-```
-
-Order confirmation example:
-
-```json
-{
-  "order_id": "ord_food_456",
-  "status": "confirmed",
-  "estimated_delivery_min": 40,
-  "total_amount": 3200,
-  "currency": "eur"
-}
-```
-
-**5. Partner → Webhook Receiver (async push).** When something changes on the partner's side — courier assigned, food ready, delivery complete — the partner POSTs to Map.co's webhook endpoint.
-
-```
-POST https://api.mapco.com/webhooks/partner/order-status
-X-Webhook-Signature: sha256=a1b2c3...
-X-Webhook-Timestamp: 1711191540
-
-{
-  "event_type": "order.status_updated",
-  "order_id": "ord_food_456",
-  "status": "picked_up",
-  "courier": { "name": "Lisa" },
-  "estimated_arrival_at": "2026-03-23T13:10:00Z"
-}
-```
-
-**6. Backend → Database (write).** After placing an order or receiving a partner response, the backend persists the order state. This is Map.co's source of truth for order history, status, and reconciliation.
-
-```sql
-INSERT INTO orders (map_order_id, partner_order_id, partner_id, status, total_amount, currency, created_at)
-VALUES ('mapco_order_12345', 'ord_food_456', 'partner_foodco', 'confirmed', 3200, 'eur', NOW());
-```
-
-**7. Webhook Receiver → Database (write).** When a webhook arrives with a status update, the receiver verifies the HMAC signature, then writes the new status.
-
-```sql
-INSERT INTO order_events (partner_order_id, status, received_at)
-VALUES ('ord_food_456', 'picked_up', NOW());
-
-UPDATE orders SET status = 'picked_up' WHERE partner_order_id = 'ord_food_456';
-```
-
-### Payment and Settlement
-
-Map.co handles payment collection separately. The partner receives a `payment_reference` on the order but never processes payment or sees card details.
-
-```mermaid
-sequenceDiagram
-    participant User as User
-    participant App as Map.co App
-    participant Pay as Map.co Payment<br/>(Stripe, Apple Pay, etc.)
-    participant Backend as Map.co Backend
-    participant Partner as Food.co
-
-    User->>App: Confirms order
-    App->>Pay: Collect payment
-    Pay-->>App: payment_reference=mapco_pay_xyz789
-    App->>Backend: Place order (with payment_reference)
-    Backend->>Partner: POST /v1/orders (payment_reference in body)
-    Note over Partner: Food.co never sees card details.<br/>Settles with Map.co separately.
-```
-
-**Settlement:** Daily batch per partner — aggregate delivered orders, subtract Map.co's commission (15-20%), single transfer. Report includes order-level line items for reconciliation.
-
-**Reconciliation:** Daily comparison of Map.co's order DB against the partner's records. Discrepancies (delivered vs cancelled mismatches) flagged for manual review.
-
-**Stripe Connect parallel:** Map.co = platform, partners = connected accounts. Each order maps to Separate Charges and Transfers with `application_fee_amount` for commission. The `payment_reference` correlates deliveries with payments across both systems.
-
-### Partner Registration
-
-Partner registers with Map.co to receive API credentials and a webhook secret. This is a one-time setup, not part of the order flow.
-
-```mermaid
-sequenceDiagram
-    participant Partner as New Partner (e.g. MealDash)
-    participant MapCo as Map.co Platform
-
-    Partner->>MapCo: POST /partners/register
-    MapCo-->>Partner: partner_id, api_key, webhook_secret, webhook_url
-    Note over Partner,MapCo: One-time setup.<br/>api_key authenticates Map.co → Partner.<br/>webhook_secret authenticates Partner → Map.co.
-```
-
-### Multiple Partners per Restaurant
-
-The same restaurant (e.g. Pizza Hut) can be listed by more than one delivery partner. When the user searches, Map.co queries all partners in parallel, merges the results, and picks the best option per restaurant. The user sees one listing per restaurant, not one per partner.
-
-```mermaid
-graph TD
-    Search["User searches near Friedrichstr."]
-    Backend["Map.co Backend<br/>queries all partners in parallel"]
-
-    FC["Food.co<br/>Pizza Hut · 35 min · EUR 15 min"]
-    MD["MealDash<br/>Pizza Hut · 28 min · EUR 12 min"]
-    QB["QuickBite<br/>No results"]
-
-    Dedup["Deduplicate by restaurant<br/>Pick fastest delivery per restaurant"]
-    Result["Pizza Hut — 28 min delivery<br/>Routed via MealDash · user never sees this"]
-
-    Search --> Backend
-    Backend --> FC
-    Backend --> MD
-    Backend --> QB
-    FC --> Dedup
-    MD --> Dedup
-    QB --> Dedup
-    Dedup --> Result
-```
-
-The user never knows which partner is fulfilling the order. If the user orders from Pizza Hut, Map.co routes `POST /v1/orders` to MealDash. If MealDash goes down, Map.co can failover to Food.co transparently.
-
----
 
 ## Endpoints at a Glance
 
@@ -249,6 +120,14 @@ The reverse API has five endpoints that Food.co partners must implement, plus a 
 | 4 | `GET` | `/v1/orders/{id}` | Get order status (fallback for webhooks) |
 | 5 | `POST` | `/v1/orders/{id}/cancel` | Cancel an order |
 
+```
+GET /v1/restaurants/rest_982/menu HTTP/1.1
+Host: api.foodco.com
+Authorization: Bearer maps_live_sk_abc123
+X-Maps-Request-Id: req_a1b2c3
+If-None-Match: "menu-rest_982-v7"
+Accept-Language: de-DE
+```
 Map.co also exposes a **webhook endpoint** that partners call to push real-time order status updates (courier assigned, food ready, delivered).
 
 ### What Triggers Each API Call
@@ -328,11 +207,11 @@ curl -s "https://api.foodco.example/v1/restaurantslat=52.52&lng=13.40&radius_km=
 
 ---
 
-### 2. View the Menu
+### 2. View the Menu and Customize Items
 
 **`GET /v1/restaurants/{restaurant_id}/menu`**
 
-Returns the full menu for a restaurant, grouped by category.
+Returns the full menu for a restaurant, grouped by category. Each item includes available customizations so the user can modify their selection before ordering.
 
 **Caching:** Menus change infrequently (a few times per day) but get fetched thousands of times per hour for popular restaurants. Partners return `ETag` and `Cache-Control` headers to enable conditional requests.
 
@@ -367,10 +246,22 @@ Response `200`:
             {
               "id": "cust_size",
               "name": "Size",
+              "type": "single_select",
               "required": true,
               "options": [
-                { "id": "small", "name": "Small (26cm)", "price_delta": 0 },
-                { "id": "large", "name": "Large (32cm)", "price_delta": 400 }
+                { "id": "opt_s", "name": "Small (26cm)", "price_delta": 0 },
+                { "id": "opt_l", "name": "Large (32cm)", "price_delta": 400 }
+              ]
+            },
+            {
+              "id": "cust_toppings",
+              "name": "Extra Toppings",
+              "type": "multi_select",
+              "required": false,
+              "max_selections": 3,
+              "options": [
+                { "id": "opt_mush", "name": "Mushrooms", "price_delta": 150 },
+                { "id": "opt_olives", "name": "Olives", "price_delta": 100 }
               ]
             }
           ]
@@ -381,7 +272,25 @@ Response `200`:
 }
 ```
 
-`available: false` means temporarily out of stock. `customizations` can be `required` (user must pick one) or optional. `price_delta` is added to the base `price`. Large Margherita = 1200 + 400 = EUR 16.00.
+```http
+GET /v1/restaurants/rest_abc123/menu HTTP/1.1
+Host: api.foodco.com
+Authorization: Bearer maps_live_sk_abc123
+X-Maps-Request-Id: req_a1b2c3
+If-None-Match: "menu_v42"
+Accept-Language: de-DE
+
+HTTP/1.1 304 Not Modified
+ETag: "menu_v42"
+```
+
+**Customization model:**
+
+- `type: "single_select"` -- user picks exactly one (e.g. size). `required: true` means the order fails without it.
+- `type: "multi_select"` -- user picks zero to `max_selections` (e.g. toppings). `required: false` means it's optional.
+- `price_delta` is added to the base `price`. Large Margherita with mushrooms = 1200 + 400 + 150 = EUR 17.50.
+
+The user's selections are submitted in the order request (see Objective 3).
 
 ---
 
@@ -402,28 +311,42 @@ Request headers:
 
 Request body:
 ```json
+POST /v1/orders HTTP/1.1
+Host: api.foodco.com
+Authorization: Bearer maps_live_sk_abc123
+Idempotency-Key: mapco_order_789
+Content-Type: application/json
+X-Maps-Request-Id: req_d4e5f6
+
 {
-  "restaurant_id": "rest_abc123",
+  "restaurant_id": "rest_982",
+  "maps_order_ref": "maps_ord_789",
   "items": [
     {
-      "item_id": "item_001",
+      "item_id": "item_42",
       "quantity": 2,
+      "notes": "no onions",
       "customizations": [
-        { "customization_id": "cust_size", "option_id": "large" }
+        { "customization_id": "cust_size", "selected": ["opt_l"] },
+        { "customization_id": "cust_toppings", "selected": ["opt_mush"] }
       ]
-    }
+    },
+    { "item_id": "item_17", "quantity": 1 }
   ],
   "delivery_address": {
-    "street": "Unter den Linden 1",
-    "city": "Berlin",
-    "postal_code": "10117",
+    "street": "Maximilianstrasse 10",
+    "city": "Munich",
+    "postal_code": "80539",
     "country": "DE",
-    "lat": 52.5163,
-    "lng": 13.3777
+    "lat": 48.1391,
+    "lng": 11.5802
   },
-  "customer_phone": "+491701234567",
-  "payment_reference": "mapco_pay_xyz789",
-  "notes": "Ring doorbell twice"
+  "customer": {
+    "name": "Max Mustermann",
+    "phone": "+49 170 1234567"
+  },
+  "requested_delivery_at": "2026-03-23T13:00:00Z",
+  "currency": "EUR"
 }
 ```
 
@@ -459,8 +382,41 @@ Response `201`:
 ---
 
 ### 4. Track the Order
+```
+POST /v1/webhooks/delivery-events HTTP/1.1
+Host: api.maps.co
+Authorization: Bearer foodco_wh_sk_xyz789
+X-Webhook-Signature: sha256=a1b2c3d4e5...
+X-Webhook-Timestamp: 1711191540
+Content-Type: application/json
+X-Maps-Request-Id: req_g7h8i9
 
+{
+  "event_id": "evt_abc123",
+  "event_type": "order.status_updated",
+  "partner_id": "food_co",
+  "timestamp": "2026-03-23T12:55:00Z",
+  "data": {
+    "order_id": "ord_food_456",
+    "maps_order_ref": "maps_ord_789",
+    "status": "ready_for_pickup",
+    "courier": {
+      "name": "Lisa",
+      "location": { "lat": 48.1351, "lng": 11.5820 }
+    },
+    "estimated_arrival_at": "2026-03-23T13:10:00Z"
+  }
+}
+```
 **`GET /v1/orders/{order_id}`**
+
+```http
+GET /v1/orders/ord_food_456 HTTP/1.1
+Host: api.foodco.com
+Authorization: Bearer maps_live_sk_abc123
+X-Maps-Request-Id: req_m3n4o5
+
+```
 
 Returns current order status. This is a **fallback** — the primary mechanism is webhooks. Map.co uses this for initial page load or if webhooks are delayed.
 
@@ -494,33 +450,145 @@ confirmed → preparing → ready_for_pickup → picked_up → en_route → deli
 
 Transitions are one-way. `cancelled` can happen from most states, but not after `delivered`. The `courier` object appears once a courier is assigned (from `picked_up` onward).
 
+Success:
+
+```http
+HTTP/1.1 202 Accepted
+
+{
+  "event_id": "evt_abc123",
+  "status": "received"
+}
+```
+Duplicate (already processed):
+
+```http
+HTTP/1.1 200 OK
+
+{
+  "event_id": "evt_abc123",
+  "status": "already_processed"
+}
+```
+
+Signature invalid:
+
+```http
+HTTP/1.1 401 Unauthorized
+
+{
+  "error": {
+    "code": "invalid_signature",
+    "message": "Webhook signature verification failed"
+  }
+}
+```
+
+
 ---
 
 ### 5. Order Cancellation
 
 **`POST /v1/orders/{order_id}/cancel`**
 
+Maps.co calls this when the user requests cancellation. Cancellability depends on order status -- partners reject if the order is too far along.
+
+Path params:
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `order_id` | string | yes | Partner's order identifier |
+
 Request body:
 
-```json
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `maps_order_ref` | string | yes | Maps.co's order reference |
+| `reason` | string | yes | `customer_requested`, `payment_failed` |
+
+Error codes:
+
+| Status | Code | When |
+|--------|------|------|
+| 404 | `order_not_found` | Order does not exist |
+| 409 | `cancellation_not_allowed` | Order is `picked_up`, `en_route`, or `delivered` |
+| 429 | `rate_limited` | Too many requests |
+
+Request:
+
+```http
+POST /v1/orders/ord_food_456/cancel HTTP/1.1
+Host: api.foodco.com
+Authorization: Bearer maps_live_sk_abc123
+Content-Type: application/json
+X-Maps-Request-Id: req_s9t0u1
+
 {
+  "maps_order_ref": "maps_ord_789",
   "reason": "customer_requested"
 }
 ```
 
-Response `200`:
+Response (200 OK -- cancelled, no fee):
 
-```json
+```http
+HTTP/1.1 200 OK
+
 {
   "order_id": "ord_food_456",
+  "maps_order_ref": "maps_ord_789",
   "status": "cancelled",
-  "cancellation_fee": 500
+  "cancelled_at": "2026-03-23T12:34:00Z",
+  "cancellation_fee": 0,
+  "currency": "EUR"
 }
 ```
 
-`cancellation_fee` may be non-zero if the restaurant already started preparing. Map.co decides whether to absorb this or pass it to the user. Returns `409` if the order is already `picked_up`, `en_route`, or `delivered`.
+Response (200 OK -- cancelled, with fee):
+
+```http
+HTTP/1.1 200 OK
+
+{
+  "order_id": "ord_food_456",
+  "maps_order_ref": "maps_ord_789",
+  "status": "cancelled",
+  "cancelled_at": "2026-03-23T12:45:00Z",
+  "cancellation_fee": 500,
+  "currency": "EUR"
+}
+```
+
+`cancellation_fee` may be non-zero if the restaurant already started preparing (e.g. 500 = EUR 5.00). Maps.co decides whether to absorb this or pass it to the user based on cancellation policy and timing.
+
+Response (409 -- too late to cancel):
+
+```http
+HTTP/1.1 409 Conflict
+
+{
+  "error": {
+    "code": "cancellation_not_allowed",
+    "message": "Order is already in_transit and cannot be cancelled"
+  }
+}
+```
+
+Response (404 -- order not found):
+
+```http
+HTTP/1.1 404 Not Found
+
+{
+  "error": {
+    "code": "order_not_found",
+    "message": "Order ord_xyz999 not found"
+  }
+}
+```
 
 ---
+# Additional Features 
 
 ## Webhooks — Food.co Calls Map.co
 
@@ -635,6 +703,78 @@ Food.co is the design partner — the largest partner, with the engineering capa
 | **Partner-specific base URLs** | Each partner hosts their own API. Map.co routes to the correct partner based on `partner_id`. Partners control their own infrastructure, scaling, and deployments. |
 | **Food.co first as design partner, then scale** | One flagship partner stabilizes the spec under real traffic before opening to additional partners. |
 
+
+### Payment and Settlement
+
+Map.co handles payment collection separately. The partner receives a `payment_reference` on the order but never processes payment or sees card details.
+
+```mermaid
+sequenceDiagram
+    participant User as User
+    participant App as Map.co App
+    participant Pay as Map.co Payment<br/>(Stripe, Apple Pay, etc.)
+    participant Backend as Map.co Backend
+    participant Partner as Food.co
+
+    User->>App: Confirms order
+    App->>Pay: Collect payment
+    Pay-->>App: payment_reference=mapco_pay_xyz789
+    App->>Backend: Place order (with payment_reference)
+    Backend->>Partner: POST /v1/orders (payment_reference in body)
+    Note over Partner: Food.co never sees card details.<br/>Settles with Map.co separately.
+```
+
+**Settlement:** Daily batch per partner — aggregate delivered orders, subtract Map.co's commission (15-20%), single transfer. Report includes order-level line items for reconciliation.
+
+**Reconciliation:** Daily comparison of Map.co's order DB against the partner's records. Discrepancies (delivered vs cancelled mismatches) flagged for manual review.
+
+**Stripe Connect parallel:** Map.co = platform, partners = connected accounts. Each order maps to Separate Charges and Transfers with `application_fee_amount` for commission. The `payment_reference` correlates deliveries with payments across both systems.
+
+### Multiple Partners per Restaurant
+
+The same restaurant (e.g. Pizza Hut) can be listed by more than one delivery partner. When the user searches, Map.co queries all partners in parallel, merges the results, and picks the best option per restaurant. The user sees one listing per restaurant, not one per partner.
+
+```
+GET /v1/restaurants?lat=48.1391&lng=11.5802&radius=3000
+  -> api.foodco.com
+  -> api.eatsde.com
+  -> api.delivereu.com
+
+  Maps.co Backend
+  |
+  |--- GET /v1/restaurants?lat=48.1391&lng=11.5802&radius=3000 ---> api.foodco.com
+  |
+  |--- GET /v1/restaurants?lat=48.1391&lng=11.5802&radius=3000 ---> api.eatsde.com
+  |
+  |--- GET /v1/restaurants?lat=48.1391&lng=11.5802&radius=3000 ---> api.delivereu.com
+```
+
+```mermaid
+graph TD
+    Search["User searches near Friedrichstr."]
+    Backend["Map.co Backend<br/>queries all partners in parallel"]
+
+    FC["Food.co<br/>Pizza Hut · 35 min · EUR 15 min"]
+    MD["MealDash<br/>Pizza Hut · 28 min · EUR 12 min"]
+    QB["QuickBite<br/>No results"]
+
+    Dedup["Deduplicate by restaurant<br/>Pick fastest delivery per restaurant"]
+    Result["Pizza Hut — 28 min delivery<br/>Routed via MealDash · user never sees this"]
+
+    Search --> Backend
+    Backend --> FC
+    Backend --> MD
+    Backend --> QB
+    FC --> Dedup
+    MD --> Dedup
+    QB --> Dedup
+    Dedup --> Result
+```
+
+The user never knows which partner is fulfilling the order. If the user orders from Pizza Hut, Map.co routes `POST /v1/orders` to MealDash. If MealDash goes down, Map.co can failover to Food.co transparently.
+
+
+
 ---
 
 ## Edge Cases
@@ -659,3 +799,17 @@ If Food.co's webhook infrastructure is down, Map.co falls back to polling `GET /
 
 **Duplicate webhook delivery.**
 Map.co deduplicates using `order_id` + `status` + `timestamp`. Processing the same event twice is a no-op.
+
+---
+
+## Edge Cases
+
+| Category | Scenario | Resolution |
+|----------|----------|------------|
+| Sync | Price drift between menu cache and order submit | Partner's `total_amount` in the order response is authoritative. Backend compares against displayed price; if delta exceeds threshold, reject, re-fetch menu, show user updated pricing. |
+| Async | Out-of-order webhooks | Append-only event log; update current status only if incoming timestamp is newer. State never regresses. |
+| Payment | Order cancelled after payment collected | Webhook triggers automatic refund. If settlement already ran, clawback in next cycle. Partner never touches payment. |
+| Operational | Partner implements contract incorrectly | Conformance test suite run during onboarding: schema validation, pagination, idempotency, error codes, webhook signing. 100% pass required for production access. |
+
+
+
