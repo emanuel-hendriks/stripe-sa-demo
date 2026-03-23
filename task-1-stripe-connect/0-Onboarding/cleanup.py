@@ -6,9 +6,9 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEMO_DIR = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, DEMO_DIR)
 
-stripe.api_key = os.environ.get("STRIPE_MAGENTA_KEY", "")
+stripe.api_key = os.environ.get("STRIPE_DEMO_KEY", "")
 if not stripe.api_key:
-    sys.exit("Set STRIPE_MAGENTA_KEY in your environment.")
+    sys.exit("Set STRIPE_DEMO_KEY in your environment.")
 
 from log_util import start_log
 start_log("cleanup")
